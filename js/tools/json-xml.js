@@ -11,6 +11,7 @@ class JsonXmlTool {
         <div class="flex flex-wrap gap-2 items-center">
           <button data-a="json" class="${BTN_PRIMARY}">Formatar JSON</button>
           <button data-a="xml" class="${BTN_PRIMARY}">Formatar XML</button>
+          <button data-a="b64" class="${BTN_PRIMARY}">Decodificar Base64</button>
           <button data-a="clear" class="${BTN}">Limpar</button>
           <span data-badge class="hidden px-2 py-1 rounded text-xs font-semibold bg-teal-600/10 text-teal-700 dark:text-teal-300"></span>
           <button data-a="download" class="${BTN} ml-auto flex items-center gap-2"><i data-lucide="download" class="w-4 h-4"></i>Baixar Arquivo</button>
@@ -22,7 +23,7 @@ class JsonXmlTool {
     this.status = $('[data-status]', el);
     el.addEventListener('click', e => {
       const b = e.target.closest('[data-a]'); if (!b) return;
-      ({ json: () => this.format('json'), xml: () => this.format('xml'), clear: () => this.clear(), download: () => this.download() })[b.dataset.a]();
+      ({ b64: () => this.decodeB64(), json: () => this.format('json'), xml: () => this.format('xml'), clear: () => this.clear(), download: () => this.download() })[b.dataset.a]();
     });
     this.initEditor($('[data-editor]', el));
   }
@@ -174,6 +175,84 @@ class JsonXmlTool {
     };
     const decl = /^\s*<\?xml[^>]*\?>/.exec(src);
     return ((decl ? decl[0].trim() + '\n' : '') + walk(doc.documentElement, 0)).trimEnd();
+  }
+
+  // ---------- Base64 embutido ----------
+  // Converte Base64 (inclusive base64url) para texto UTF-8; retorna null se não for Base64 válido.
+  static b64ToText(s) {
+    if (typeof s !== 'string') return null;
+    const t = s.trim().replace(/\s+/g, '');
+    if (t.length < 16 || !/^[A-Za-z0-9+/_-]+={0,2}$/.test(t)) return null;
+    try {
+      const b64 = t.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(t.length / 4) * 4, '=');
+      return new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(atob(b64), c => c.charCodeAt(0)));
+    } catch (e) { return null; }
+  }
+
+  // Só considera "decodificado" se o resultado for JSON ou XML válido (evita falsos positivos).
+  parseDecoded(text) {
+    const s = text.trim();
+    if (s[0] === '{' || s[0] === '[') { try { return { kind: 'json', value: JSON.parse(s) }; } catch (e) {} }
+    if (s[0] === '<') { try { return { kind: 'xml', text: this.prettyXml(s) }; } catch (e) {} }
+    return null;
+  }
+
+  // Percorre o JSON e troca cada campo Base64 pelo conteúdo decodificado (recursivo).
+  expandB64(node, stats) {
+    if (typeof node === 'string') {
+      const txt = JsonXmlTool.b64ToText(node);
+      const r = txt && this.parseDecoded(txt);
+      if (!r) return node;
+      stats.n++;
+      return r.kind === 'json' ? this.expandB64(r.value, stats) : r.text;
+    }
+    if (Array.isArray(node)) return node.map(v => this.expandB64(v, stats));
+    if (node && typeof node === 'object') {
+      const o = {}; for (const k in node) o[k] = this.expandB64(node[k], stats); return o;
+    }
+    return node;
+  }
+
+  // Mesmo processo para XML: decodifica o texto das tags que contêm Base64.
+  expandXmlB64(src, stats) {
+    const doc = new DOMParser().parseFromString(src, 'application/xml');
+    const err = doc.querySelector('parsererror');
+    if (err) throw new Error(err.textContent);
+    const w = doc.createTreeWalker(doc, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_CDATA_SECTION);
+    const nodes = []; while (w.nextNode()) nodes.push(w.currentNode);
+    nodes.forEach(n => {
+      const txt = JsonXmlTool.b64ToText(n.nodeValue);
+      const r = txt && this.parseDecoded(txt);
+      if (!r) return;
+      stats.n++;
+      n.nodeValue = '\n' + (r.kind === 'json' ? JSON.stringify(this.expandB64(r.value, stats), null, 2) : r.text) + '\n';
+    });
+    return this.prettyXml(new XMLSerializer().serializeToString(doc));
+  }
+
+  decodeB64() {
+    if (!this.editor) return;
+    const src = this.editor.getValue().trim();
+    if (!src) return this.msg('O editor está vazio. Cole um conteúdo com Base64.', false);
+    const kind = this.detect(src), stats = { n: 0 };
+    try {
+      let out, lang = kind || 'json';
+      if (kind === 'json') out = JSON.stringify(this.expandB64(JSON.parse(src), stats), null, 2);
+      else if (kind === 'xml') out = this.expandXmlB64(src, stats);
+      else { // o conteúdo inteiro pode ser um único Base64
+        const txt = JsonXmlTool.b64ToText(src);
+        if (txt === null) return this.msg('Não encontrei Base64 para decodificar.', 'warn');
+        const r = this.parseDecoded(txt); stats.n = 1;
+        out = r ? (r.kind === 'json' ? JSON.stringify(r.value, null, 2) : r.text) : txt;
+        lang = r ? r.kind : 'plaintext';
+      }
+      if (!stats.n) return this.msg('Nenhum campo Base64 com JSON ou XML dentro foi encontrado.', 'warn');
+      this.editor.setValue(out); this.editor.setLang(lang); this.lang = lang === 'xml' ? 'xml' : 'json';
+      this.badge(kind || lang);
+      this.msg(`${stats.n} campo(s) Base64 decodificado(s) com sucesso.`, true);
+    } catch (e) {
+      this.msg(kind === 'xml' ? this.ptXml(e.message) : this.ptJson(e, src), false);
+    }
   }
 
   clear() { this.editor && this.editor.setValue(''); this.msg('', true); this.badge(null); }
