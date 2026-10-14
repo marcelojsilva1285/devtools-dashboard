@@ -3,7 +3,13 @@ class JsonXmlTool {
   id = 'json-xml';
   title = 'Formatador JSON / XML';
   icon = 'braces';
-  lang = 'json';
+  panels = []; active = 0; counter = 0; diffOn = false;
+
+  // Painel selecionado: format(), decodeB64(), clear() etc. agem sempre nele.
+  get panel() { return this.panels[this.active]; }
+  get editor() { return this.panel && this.panel.editor; }
+  get lang() { return this.panel ? this.panel.lang : 'json'; }
+  set lang(v) { if (this.panel) this.panel.lang = v; }
 
   mount(el) {
     el.innerHTML = `
@@ -13,58 +19,199 @@ class JsonXmlTool {
           <button data-a="xml" class="${BTN_PRIMARY}">Formatar XML</button>
           <button data-a="b64" class="${BTN_PRIMARY}">Decodificar Base64</button>
           <button data-a="clear" class="${BTN}">Limpar</button>
-          <span data-badge class="hidden px-2 py-1 rounded text-xs font-semibold bg-teal-600/10 text-teal-700 dark:text-teal-300"></span>
-          <button data-a="download" class="${BTN} ml-auto flex items-center gap-2"><i data-lucide="download" class="w-4 h-4"></i>Baixar Arquivo</button>
+          <span class="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1"></span>
+          <button data-a="copy" class="${BTN} flex items-center gap-2"><i data-lucide="copy" class="w-4 h-4"></i><span data-copy-label>Copiar</span></button>
+          <button data-a="download" class="${BTN} flex items-center gap-2"><i data-lucide="download" class="w-4 h-4"></i>Baixar Arquivo</button>
+          <span class="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1"></span>
+          <button data-a="add" class="${BTN}">+ Painel</button>
+          <button data-a="remove" class="${BTN}">− Painel</button>
+          <span data-diffinfo class="ml-auto text-xs text-amber-600 dark:text-amber-400"></span>
+          <button data-a="diff" class="${BTN} flex items-center gap-2"><i data-lucide="git-compare" class="w-4 h-4"></i>Destacar diferenças</button>
         </div>
         <div data-status class="text-sm min-h-[1.25rem]"></div>
-        <div data-editor class="flex-1 min-h-0 rounded-lg border border-slate-300 dark:border-slate-700 overflow-hidden bg-white dark:bg-[#1e1e1e]"></div>
+        <div data-panels class="flex-1 min-h-0 flex gap-3"></div>
       </div>`;
     this.el = el;
     this.status = $('[data-status]', el);
-    el.addEventListener('click', e => {
-      const b = e.target.closest('[data-a]'); if (!b) return;
-      ({ b64: () => this.decodeB64(), json: () => this.format('json'), xml: () => this.format('xml'), clear: () => this.clear(), download: () => this.download() })[b.dataset.a]();
-    });
-    this.initEditor($('[data-editor]', el));
-  }
-
-  initEditor(host) {
-    const useFallback = () => {
-      if (this.editor) return;
-      const ta = document.createElement('textarea');
-      ta.className = 'fallback-editor mono'; ta.spellcheck = false;
-      ta.placeholder = 'Cole seu JSON ou XML aqui...';
-      host.innerHTML = ''; host.appendChild(ta);
-      this.editor = { getValue: () => ta.value, setValue: v => (ta.value = v), setLang: () => {}, layout() {} };
-      this.fallback = true;
+    if (!document.getElementById('dx-style')) {
+      const st = document.createElement('style'); st.id = 'dx-style';
+      st.textContent = '.dx-del{background:rgba(239,68,68,.28)}.dx-add{background:rgba(34,197,94,.28)}';
+      document.head.appendChild(st);
+    }
+    const acts = {
+      json: () => this.format('json'), xml: () => this.format('xml'), b64: () => this.decodeB64(),
+      clear: () => this.clear(), copy: () => this.copy(), download: () => this.download(),
+      add: () => this.addPanel(), remove: () => this.removePanel(), diff: () => this.toggleDiff()
     };
-    const timer = setTimeout(useFallback, 8000);
-    try {
-      require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
-      // Worker proxy: permite carregar os workers do Monaco a partir do CDN.
-      window.MonacoEnvironment = { getWorkerUrl: () => URL.createObjectURL(new Blob([
-        `self.MonacoEnvironment={baseUrl:'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/'};importScripts('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/base/worker/workerMain.js');`
-      ], { type: 'text/javascript' })) };
-      // O CSS do Monaco é buscado e injetado como <style> (links externos de CSS são bloqueados na página publicada).
-      fetch('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css')
-        .then(r => r.ok ? r.text() : Promise.reject())
-        .then(css => { const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s); })
-        .catch(() => {})
-        .finally(() => require(['vs/editor/editor.main'], () => {
-          clearTimeout(timer); if (this.editor) return;
-          const m = monaco.editor.create(host, {
-            value: '{"exemplo":true,"itens":[1,2,3]}', language: 'json', automaticLayout: true,
-            theme: App.isDark() ? 'vs-dark' : 'vs', minimap: { enabled: false }, fontSize: 13, tabSize: 2
-          });
-          this.monaco = m;
-          this.editor = { getValue: () => m.getValue(), setValue: v => m.setValue(v),
-            setLang: l => monaco.editor.setModelLanguage(m.getModel(), l), layout: () => m.layout() };
-        }, useFallback));
-    } catch (e) { clearTimeout(timer); useFallback(); }
+    el.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (b) acts[b.dataset.a](); });
+    this.addPanel('{"exemplo":true,"itens":[1,2,3]}');
+    this.addPanel();
+    this.select(this.panels[0]);
   }
 
-  setTheme(dark) { if (window.monaco && this.monaco) monaco.editor.setTheme(dark ? 'vs-dark' : 'vs'); }
-  onShow() { this.editor && this.editor.layout(); }
+  // Carrega o Monaco uma única vez e compartilha entre todos os painéis (null = usar textarea).
+  static loadMonaco() {
+    if (JsonXmlTool._mp) return JsonXmlTool._mp;
+    const base = 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min';
+    return (JsonXmlTool._mp = new Promise(resolve => {
+      const timer = setTimeout(() => resolve(null), 8000);
+      try {
+        require.config({ paths: { vs: base + '/vs' } });
+        // Worker proxy: permite carregar os workers do Monaco a partir do CDN.
+        window.MonacoEnvironment = { getWorkerUrl: () => URL.createObjectURL(new Blob([
+          `self.MonacoEnvironment={baseUrl:'${base}/'};importScripts('${base}/vs/base/worker/workerMain.js');`
+        ], { type: 'text/javascript' })) };
+        // O CSS do Monaco é buscado e injetado como <style> (links externos de CSS podem ser bloqueados).
+        fetch(base + '/vs/editor/editor.main.min.css')
+          .then(r => r.ok ? r.text() : Promise.reject())
+          .then(css => { const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st); })
+          .catch(() => {})
+          .finally(() => require(['vs/editor/editor.main'], () => { clearTimeout(timer); resolve(window.monaco); }, () => resolve(null)));
+      } catch (e) { clearTimeout(timer); resolve(null); }
+    }));
+  }
+
+  addPanel(value) {
+    if (this.panels.length >= 4) return this.msg('Limite de 4 painéis lado a lado.', 'warn');
+    const n = ++this.counter;
+    const wrap = document.createElement('div');
+    wrap.className = 'flex-1 min-w-0 flex flex-col rounded-lg border-2 border-transparent p-1';
+    wrap.innerHTML = `
+      <div class="flex items-center gap-2 mb-1 px-1">
+        <input data-title value="Painel ${n}" aria-label="Nome do painel" class="min-w-0 flex-1 bg-transparent text-xs font-semibold outline-none border-b border-transparent focus:border-teal-500">
+        <span data-badge class="hidden px-2 py-0.5 rounded text-[10px] font-semibold bg-teal-600/10 text-teal-700 dark:text-teal-300"></span>
+      </div>
+      <div data-host class="flex-1 min-h-0 rounded-md border border-slate-300 dark:border-slate-700 overflow-hidden bg-white dark:bg-[#1e1e1e]"></div>`;
+    $('[data-panels]', this.el).appendChild(wrap);
+    const p = { wrap, host: $('[data-host]', wrap), titleEl: $('[data-title]', wrap), badgeEl: $('[data-badge]', wrap), lang: 'json', editor: null, mon: null };
+    this.panels.push(p);
+    wrap.addEventListener('mousedown', () => this.select(p), true);
+    p.titleEl.addEventListener('focus', () => this.select(p));
+    this.select(p);
+    JsonXmlTool.loadMonaco().then(m => this.buildEditor(p, m, value));
+  }
+
+  buildEditor(p, m, value) {
+    if (!p.wrap.isConnected) return; // painel removido enquanto o Monaco carregava
+    if (m) {
+      const ed = m.editor.create(p.host, {
+        value: value || '', language: 'json', automaticLayout: true, theme: App.isDark() ? 'vs-dark' : 'vs',
+        minimap: { enabled: false }, fontSize: 13, tabSize: 2, scrollBeyondLastLine: false
+      });
+      const coll = ed.createDecorationsCollection([]);
+      ed.onDidFocusEditorText(() => this.select(p));
+      ed.onDidChangeModelContent(() => this.scheduleDiff());
+      p.mon = ed;
+      p.editor = {
+        getValue: () => ed.getValue(), setValue: v => ed.setValue(v), layout: () => ed.layout(),
+        setLang: l => m.editor.setModelLanguage(ed.getModel(), l),
+        decorate: items => coll.set(items.map(i => ({ range: new m.Range(i.line, 1, i.line, 1), options: { isWholeLine: true, className: i.cls } })))
+      };
+    } else { // sem Monaco: textarea simples (sem realce de diferenças)
+      const ta = document.createElement('textarea');
+      ta.className = 'fallback-editor mono'; ta.spellcheck = false; ta.value = value || '';
+      ta.placeholder = 'Cole seu JSON ou XML aqui...';
+      ta.addEventListener('focus', () => this.select(p));
+      ta.addEventListener('input', () => this.scheduleDiff());
+      p.host.appendChild(ta);
+      p.editor = { getValue: () => ta.value, setValue: v => { ta.value = v; this.scheduleDiff(); }, setLang() {}, layout() {}, decorate() {} };
+    }
+  }
+
+  select(p) {
+    this.active = this.panels.indexOf(p);
+    this.panels.forEach(q => {
+      const on = q === p;
+      q.wrap.classList.toggle('border-teal-500', on);
+      q.wrap.classList.toggle('border-transparent', !on);
+    });
+    if (this.diffOn) this.updateDiff();
+  }
+
+  removePanel() {
+    if (this.panels.length <= 1) return this.msg('É preciso manter ao menos um painel.', 'warn');
+    const p = this.panel;
+    if (p.mon) { const md = p.mon.getModel(); p.mon.dispose(); md && md.dispose(); }
+    p.wrap.remove();
+    this.panels.splice(this.active, 1);
+    this.select(this.panels[Math.min(this.active, this.panels.length - 1)]);
+    this.msg('Painel removido.', true);
+  }
+
+  async copy() {
+    if (!this.editor) return;
+    const text = this.editor.getValue();
+    if (!text.trim()) return this.msg('Nada para copiar: o painel está vazio.', false);
+    try { await navigator.clipboard.writeText(text); }
+    catch (e) { // fallback para ambientes onde a Clipboard API é bloqueada
+      const t = Object.assign(document.createElement('textarea'), { value: text });
+      document.body.appendChild(t); t.select(); try { document.execCommand('copy'); } catch (_) {} t.remove();
+    }
+    const lbl = $('[data-copy-label]', this.el);
+    lbl.textContent = 'Copiado!';
+    clearTimeout(this.copyTimer);
+    this.copyTimer = setTimeout(() => (lbl.textContent = 'Copiar'), 2000);
+    this.msg(`Conteúdo de "${this.panel.titleEl.value}" copiado.`, true);
+  }
+
+  // ---------- Destaque de diferenças (só quando o botão está ativo) ----------
+  toggleDiff() {
+    this.diffOn = !this.diffOn;
+    ['bg-amber-500/20', 'border-amber-500'].forEach(c => $('[data-a="diff"]', this.el).classList.toggle(c, this.diffOn));
+    this.updateDiff();
+  }
+
+  scheduleDiff() {
+    if (!this.diffOn) return;
+    clearTimeout(this.diffTimer);
+    this.diffTimer = setTimeout(() => this.updateDiff(), 300);
+  }
+
+  // Compara o painel selecionado com o vizinho da direita (ou da esquerda, se for o último).
+  updateDiff() {
+    const info = $('[data-diffinfo]', this.el);
+    this.panels.forEach(p => p.editor && p.editor.decorate([]));
+    if (!this.diffOn) { info.textContent = ''; return; }
+    if (this.panels.length < 2) { info.textContent = 'Adicione outro painel para comparar.'; return; }
+    const j = this.active < this.panels.length - 1 ? this.active + 1 : this.active - 1;
+    const a = this.panels[Math.min(this.active, j)], b = this.panels[Math.max(this.active, j)];
+    if (!a.editor || !b.editor) return;
+    const lines = e => e.getValue().split('\n').map(l => l.trimEnd());
+    const { del, add } = JsonXmlTool.lineDiff(lines(a.editor), lines(b.editor));
+    a.editor.decorate(del.map(line => ({ line, cls: 'dx-del' })));
+    b.editor.decorate(add.map(line => ({ line, cls: 'dx-add' })));
+    const nomes = `${a.titleEl.value} × ${b.titleEl.value}`;
+    info.textContent = del.length || add.length
+      ? `${nomes}: ${del.length} linha(s) só à esquerda (vermelho), ${add.length} só à direita (verde)`
+      : `${nomes}: conteúdos idênticos`;
+  }
+
+  // Diferença por linhas (LCS). Retorna os números (base 1) das linhas exclusivas de cada lado.
+  static lineDiff(A, B) {
+    const del = [], add = [];
+    if (A.length * B.length > 4e6) { // textos muito grandes: comparação simplificada por conjunto de linhas
+      const sa = new Set(A), sb = new Set(B);
+      A.forEach((l, i) => { if (!sb.has(l)) del.push(i + 1); });
+      B.forEach((l, i) => { if (!sa.has(l)) add.push(i + 1); });
+      return { del, add };
+    }
+    const n = A.length, m = B.length, w = m + 1, t = new Uint32Array((n + 1) * w);
+    for (let i = n - 1; i >= 0; i--)
+      for (let j = m - 1; j >= 0; j--)
+        t[i * w + j] = A[i] === B[j] ? t[(i + 1) * w + j + 1] + 1 : Math.max(t[(i + 1) * w + j], t[i * w + j + 1]);
+    let i = 0, j = 0;
+    while (i < n && j < m) {
+      if (A[i] === B[j]) { i++; j++; }
+      else if (t[(i + 1) * w + j] >= t[i * w + j + 1]) del.push(++i);
+      else add.push(++j);
+    }
+    while (i < n) del.push(++i);
+    while (j < m) add.push(++j);
+    return { del, add };
+  }
+
+  setTheme(dark) { if (window.monaco) monaco.editor.setTheme(dark ? 'vs-dark' : 'vs'); }
+  onShow() { this.panels.forEach(p => p.editor && p.editor.layout()); }
 
   msg(text, ok) {
     this.status.textContent = text;
@@ -81,7 +228,7 @@ class JsonXmlTool {
   }
 
   badge(kind) {
-    const b = $('[data-badge]', this.el);
+    const b = this.panel && this.panel.badgeEl; if (!b) return;
     b.textContent = kind ? kind.toUpperCase() + ' detectado' : '';
     b.classList.toggle('hidden', !kind);
   }
@@ -260,14 +407,15 @@ class JsonXmlTool {
   download() {
     if (!this.editor) return;
     const content = this.editor.getValue();
-    if (!content.trim()) return this.msg('Nada para baixar: o editor está vazio.', false);
+    if (!content.trim()) return this.msg('Nada para baixar: o painel está vazio.', false);
     const ext = content.trim().startsWith('<') ? 'xml' : (this.lang === 'xml' ? 'xml' : 'json');
     const mime = ext === 'xml' ? 'application/xml' : 'application/json';
+    const nome = (this.panel.titleEl.value || 'arquivo').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'arquivo';
     const url = URL.createObjectURL(new Blob([content], { type: mime + ';charset=utf-8' }));
-    const a = Object.assign(document.createElement('a'), { href: url, download: 'arquivo.' + ext });
+    const a = Object.assign(document.createElement('a'), { href: url, download: nome + '.' + ext });
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    this.msg('Arquivo arquivo.' + ext + ' gerado.', true);
+    this.msg('Arquivo ' + nome + '.' + ext + ' gerado.', true);
   }
 }
 
