@@ -2,7 +2,7 @@
 class CpfTool {
   id = 'cpf';
   title = 'Gerador de CPF';
-  icon = 'id-card';
+  icon = 'contact';
 
   mount(el) {
     el.innerHTML = `
