@@ -1,41 +1,58 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR" class="dark">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>DevTools Dashboard</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="js/tailwind-config.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/lucide@0.383.0/dist/umd/lucide.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
-<link rel="stylesheet" href="css/styles.css">
-<link rel="icon" type="image/png" href="assets/pesquisa.png">
-</head>
-<body class="text-slate-800 dark:text-slate-200">
-<div class="flex h-full">
-  <aside class="w-16 md:w-60 shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-[#12161d] flex flex-col">
-    <div class="h-14 flex items-center gap-2 px-4 border-b border-slate-200 dark:border-slate-800">
-      <i data-lucide="wrench" class="w-5 h-5 text-teal-600 dark:text-teal-400"></i>
-      <span class="hidden md:inline font-semibold">DevTools</span>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>DevTools Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/tailwind-config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@0.383.0/dist/umd/lucide.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+    <link rel="stylesheet" href="css/styles.css" />
+    <link rel="icon" type="image/png" href="assets/pesquisa.png" />
+  </head>
+  <body class="text-slate-800 dark:text-slate-200">
+    <div class="flex h-full">
+      <aside
+        class="w-16 md:w-60 shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-[#12161d] flex flex-col"
+      >
+        <div
+          class="h-14 flex items-center gap-2 px-4 border-b border-slate-200 dark:border-slate-800"
+        >
+          <i
+            data-lucide="wrench"
+            class="w-5 h-5 text-teal-600 dark:text-teal-400"
+          ></i>
+          <span class="hidden md:inline font-semibold">DevTools</span>
+        </div>
+        <nav id="menu" class="flex-1 p-2 space-y-1"></nav>
+        <button
+          id="themeBtn"
+          class="m-2 flex items-center gap-3 px-3 py-2 rounded-md text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+        >
+          <i data-lucide="moon" class="w-4 h-4"></i
+          ><span class="hidden md:inline">Alternar tema</span>
+        </button>
+      </aside>
+      <main class="flex-1 min-w-0 flex flex-col">
+        <header
+          class="h-14 shrink-0 flex items-center px-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#12161d]"
+        >
+          <h1 id="toolTitle" class="font-semibold"></h1>
+        </header>
+        <div id="panels" class="flex-1 min-h-0 relative"></div>
+      </main>
     </div>
-    <nav id="menu" class="flex-1 p-2 space-y-1"></nav>
-    <button id="themeBtn" class="m-2 flex items-center gap-3 px-3 py-2 rounded-md text-sm hover:bg-slate-100 dark:hover:bg-slate-800">
-      <i data-lucide="moon" class="w-4 h-4"></i><span class="hidden md:inline">Alternar tema</span>
-    </button>
-  </aside>
-  <main class="flex-1 min-w-0 flex flex-col">
-    <header class="h-14 shrink-0 flex items-center px-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#12161d]">
-      <h1 id="toolTitle" class="font-semibold"></h1>
-    </header>
-    <div id="panels" class="flex-1 min-h-0 relative"></div>
-  </main>
-</div>
 
-<script src="js/core.js"></script>
-<!-- FERRAMENTAS: para adicionar uma nova, inclua o script dela aqui (veja o tutorial em js/core.js) -->
-<script src="js/tools/json-xml.js"></script>
-<script src="js/tools/cpf.js"></script>
-<script src="js/tools/logs.js"></script>
-<script src="js/app.js"></script>
-</body>
+    <script src="js/core.js"></script>
+    <!-- FERRAMENTAS: para adicionar uma nova, inclua o script dela aqui (veja o tutorial em js/core.js) -->
+    <script src="js/tools/json-xml.js"></script>
+    <script src="js/tools/logs.js"></script>
+    <script src="js/tools/nfe.js"></script>
+    <script src="js/tools/cpf.js"></script>
+    <script src="js/app.js"></script>
+  </body>
 </html>

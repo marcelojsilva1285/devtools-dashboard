@@ -402,6 +402,18 @@ class JsonXmlTool {
     }
   }
 
+  // Usado por outras ferramentas: abre um texto em um painel novo (ou no selecionado, se já houver 4) e formata como XML.
+  async loadText(text, title) {
+    if (this.panels.length < 4) this.addPanel();
+    const p = this.panels[this.panels.length < 4 ? this.panels.length - 1 : this.active];
+    this.select(p);
+    await JsonXmlTool.loadMonaco(); // o editor do painel novo é criado antes desta linha continuar
+    if (title) p.titleEl.value = title;
+    if (!p.editor) return;
+    p.editor.setValue(text);
+    this.format('xml');
+  }
+
   clear() { this.editor && this.editor.setValue(''); this.msg('', true); this.badge(null); }
 
   download() {
