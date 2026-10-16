@@ -22,6 +22,7 @@ class JsonXmlTool {
           <span class="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1"></span>
           <button data-a="copy" class="${BTN} flex items-center gap-2"><i data-lucide="copy" class="w-4 h-4"></i><span data-copy-label>Copiar</span></button>
           <button data-a="download" class="${BTN} flex items-center gap-2"><i data-lucide="download" class="w-4 h-4"></i>Baixar Arquivo</button>
+          <button data-a="wrap" class="${BTN}">Quebrar linhas</button>
           <span class="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1"></span>
           <button data-a="add" class="${BTN}">+ Painel</button>
           <button data-a="remove" class="${BTN}">− Painel</button>
@@ -41,7 +42,7 @@ class JsonXmlTool {
     const acts = {
       json: () => this.format('json'), xml: () => this.format('xml'), b64: () => this.decodeB64(),
       clear: () => this.clear(), copy: () => this.copy(), download: () => this.download(),
-      add: () => this.addPanel(), remove: () => this.removePanel(), diff: () => this.toggleDiff()
+      add: () => this.addPanel(), wrap: () => this.toggleWrap(), remove: () => this.removePanel(), diff: () => this.toggleDiff()
     };
     el.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (b) acts[b.dataset.a](); });
     this.addPanel('{"exemplo":true,"itens":[1,2,3]}');
@@ -83,7 +84,7 @@ class JsonXmlTool {
       </div>
       <div data-host class="flex-1 min-h-0 rounded-md border border-slate-300 dark:border-slate-700 overflow-hidden bg-white dark:bg-[#1e1e1e]"></div>`;
     $('[data-panels]', this.el).appendChild(wrap);
-    const p = { wrap, host: $('[data-host]', wrap), titleEl: $('[data-title]', wrap), badgeEl: $('[data-badge]', wrap), lang: 'json', editor: null, mon: null };
+    const p = { wrap, host: $('[data-host]', wrap), titleEl: $('[data-title]', wrap), badgeEl: $('[data-badge]', wrap), lang: 'json', editor: null, mon: null, soft: false };
     this.panels.push(p);
     wrap.addEventListener('mousedown', () => this.select(p), true);
     p.titleEl.addEventListener('focus', () => this.select(p));
@@ -103,7 +104,11 @@ class JsonXmlTool {
       ed.onDidChangeModelContent(() => this.scheduleDiff());
       p.mon = ed;
       p.editor = {
-        getValue: () => ed.getValue(), setValue: v => ed.setValue(v), layout: () => ed.layout(),
+        getValue: () => ed.getValue(),
+        // Depois de qualquer ação que troca o conteúdo, mostra o texto desde o início (esquerda e topo).
+        setValue: v => { ed.setValue(v); ed.setPosition({ lineNumber: 1, column: 1 }); ed.setScrollPosition({ scrollLeft: 0, scrollTop: 0 }); },
+        setWrap: on => ed.updateOptions({ wordWrap: on ? 'on' : 'off' }),
+        layout: () => ed.layout(),
         setLang: l => m.editor.setModelLanguage(ed.getModel(), l),
         decorate: items => coll.set(items.map(i => ({ range: new m.Range(i.line, 1, i.line, 1), options: { isWholeLine: true, className: i.cls } })))
       };
@@ -114,12 +119,18 @@ class JsonXmlTool {
       ta.addEventListener('focus', () => this.select(p));
       ta.addEventListener('input', () => this.scheduleDiff());
       p.host.appendChild(ta);
-      p.editor = { getValue: () => ta.value, setValue: v => { ta.value = v; this.scheduleDiff(); }, setLang() {}, layout() {}, decorate() {} };
+      p.editor = {
+        getValue: () => ta.value,
+        setValue: v => { ta.value = v; ta.setSelectionRange(0, 0); ta.scrollLeft = 0; ta.scrollTop = 0; this.scheduleDiff(); },
+        setWrap: on => { ta.style.whiteSpace = on ? 'pre-wrap' : 'pre'; },
+        setLang() {}, layout() {}, decorate() {}
+      };
     }
   }
 
   select(p) {
     this.active = this.panels.indexOf(p);
+    this.syncWrapBtn(p);
     this.panels.forEach(q => {
       const on = q === p;
       q.wrap.classList.toggle('border-teal-500', on);
@@ -136,6 +147,20 @@ class JsonXmlTool {
     this.panels.splice(this.active, 1);
     this.select(this.panels[Math.min(this.active, this.panels.length - 1)]);
     this.msg('Painel removido.', true);
+  }
+
+  // Quebra de linha ligada/desligada por painel (vale para o painel selecionado).
+  toggleWrap() {
+    const p = this.panel; if (!p || !p.editor) return;
+    p.soft = !p.soft;
+    p.editor.setWrap(p.soft);
+    this.syncWrapBtn(p);
+    this.msg(p.soft ? 'Linhas longas quebradas neste painel.' : 'Quebra de linha desligada: role na horizontal para ver o resto.', true);
+  }
+
+  syncWrapBtn(p) {
+    const b = $('[data-a="wrap"]', this.el); if (!b) return;
+    ['bg-teal-600/20', 'border-teal-500'].forEach(c => b.classList.toggle(c, !!p.soft));
   }
 
   async copy() {
